@@ -4,6 +4,42 @@ import numpy as np
 import sounddevice as sd
 import queue
 
+
+def _normalize_peak(y):
+    """Giữ biên độ trong ngưỡng an toàn để tránh méo tiếng khi cộng tín hiệu."""
+    peak = np.max(np.abs(y)) if len(y) else 0
+    if peak > 1.0:
+        return y / peak
+    return y
+
+
+def _noise_reduce_simple(y, sr):
+    """Noise reduction đơn giản dựa trên ngưỡng biên độ và giảm mềm tín hiệu nhỏ."""
+    if y is None or len(y) == 0:
+        return y
+
+    sample_len = min(len(y), int(sr * 0.25))
+    reference = y[:sample_len] if sample_len > 0 else y
+    noise_floor = np.median(np.abs(reference))
+    threshold = max(noise_floor * 1.8, 0.003)
+
+    reduced = y.copy()
+    low_mask = np.abs(reduced) < threshold
+    reduced[low_mask] *= 0.15
+    return reduced
+
+
+def _band_pass_fft(y, sr, low_hz, high_hz):
+    """Band-pass đơn giản bằng FFT để mô phỏng thiết bị truyền thông."""
+    if y is None or len(y) == 0:
+        return y
+
+    spectrum = np.fft.rfft(y)
+    freqs = np.fft.rfftfreq(len(y), d=1.0 / sr)
+    mask = (freqs >= low_hz) & (freqs <= high_hz)
+    filtered = np.fft.irfft(spectrum * mask, n=len(y))
+    return filtered.astype(np.float32)
+
 # --- HÀM XỬ LÝ HIỆU ỨNG ---
 def process_audio_data(y, sr, effect_name):
     if effect_name == "soc_chuot":
@@ -20,7 +56,34 @@ def process_audio_data(y, sr, effect_name):
         y_processed = np.zeros(len(y_shifted) + delay_samples)
         y_processed[:len(y_shifted)] = y_shifted
         y_processed[delay_samples:] += y_shifted * 0.6
-        return y_processed
+        return _normalize_peak(y_processed)
+    elif effect_name == "echo":
+        delay_samples = int(sr * 0.25)
+        y_processed = np.zeros(len(y) + delay_samples)
+        y_processed[:len(y)] = y
+        y_processed[delay_samples:] += y * 0.45
+        return _normalize_peak(y_processed)
+    elif effect_name == "reverb":
+        delay_1 = int(sr * 0.04)
+        delay_2 = int(sr * 0.08)
+        delay_3 = int(sr * 0.12)
+        total_len = len(y) + delay_3
+        y_processed = np.zeros(total_len)
+        y_processed[:len(y)] += y
+        y_processed[delay_1:delay_1 + len(y)] += y * 0.35
+        y_processed[delay_2:delay_2 + len(y)] += y * 0.22
+        y_processed[delay_3:delay_3 + len(y)] += y * 0.12
+        return _normalize_peak(y_processed)
+    elif effect_name == "noise_reduce":
+        return _noise_reduce_simple(y, sr)
+    elif effect_name == "radio":
+        band = _band_pass_fft(y, sr, 500, 3200)
+        compressed = np.tanh(band * 2.2)
+        noise = np.random.normal(0, 0.006, len(compressed))
+        return _normalize_peak(compressed + noise)
+    elif effect_name == "dien_thoai":
+        band = _band_pass_fft(y, sr, 300, 3400)
+        return _normalize_peak(np.tanh(band * 1.7))
     return y
 
 # --- HỆ THỐNG THU ÂM KHÔNG GIỚI HẠN THỜI GIAN ---
