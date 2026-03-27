@@ -430,7 +430,7 @@ class VoiceChangerApp:
         self.btn_play.configure(state="normal")
 
     def _get_audio_filetypes(self):
-        common_ext = "*.wav *.mp3 *.m4a *.aac *.flac *.ogg *.opus *.wma *.aiff *.aif *.au"
+        common_ext = "*.wav *.mp3 *.mp4 *.m4a *.aac *.flac *.ogg *.opus *.wma *.aiff *.aif *.au"
         return [
             ("Audio files", common_ext),
             ("All files", "*.*"),
@@ -465,9 +465,14 @@ class VoiceChangerApp:
                 self.y_original = None
                 self.y_processed = None
                 self._set_status("Không thể đọc file âm thanh", "#C73A3A")
+                ext = os.path.splitext(filename)[1].lower()
+                extra_note = ""
+                if ext == ".mp4":
+                    extra_note = "\n\nLưu ý: để đọc .mp4, máy cần có backend giải mã (thường là FFmpeg)."
                 messagebox.showerror(
                     "Lỗi đọc file",
-                    f"Không thể đọc file {filename}.\nHãy thử định dạng khác hoặc kiểm tra codec.\n\nChi tiết: {e}",
+                    f"Không thể đọc file {filename}.\nHãy thử định dạng khác hoặc kiểm tra codec."
+                    f"{extra_note}\n\nChi tiết: {e}",
                 )
 
     def toggle_record(self):
