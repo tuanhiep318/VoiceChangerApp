@@ -3,6 +3,8 @@ from tkinter import filedialog, messagebox
 
 import customtkinter as ctk
 import librosa
+import numpy as np
+import soundfile as sf
 
 from src.effects import process_audio_data, start_recording, stop_recording, play_audio, save_to_file
 
@@ -427,20 +429,46 @@ class VoiceChangerApp:
         self.btn_browse.configure(state="normal")
         self.btn_play.configure(state="normal")
 
+    def _get_audio_filetypes(self):
+        common_ext = "*.wav *.mp3 *.m4a *.aac *.flac *.ogg *.opus *.wma *.aiff *.aif *.au"
+        return [
+            ("Audio files", common_ext),
+            ("All files", "*.*"),
+        ]
+
+    def _load_audio_input(self, filepath):
+        try:
+            y, sr = librosa.load(filepath, sr=None, mono=True)
+            return y.astype(np.float32), int(sr)
+        except Exception:
+            data, sr = sf.read(filepath, always_2d=False)
+            if isinstance(data, np.ndarray) and data.ndim > 1:
+                data = np.mean(data, axis=1)
+            return np.asarray(data, dtype=np.float32), int(sr)
+
     # --- CÁC HÀM XỬ LÝ SỰ KIỆN ---
     def load_file(self):
-        filepath = filedialog.askopenfilename(filetypes=[("WAV Files", "*.wav")])
+        filepath = filedialog.askopenfilename(filetypes=self._get_audio_filetypes())
         if filepath:
             filename = os.path.basename(filepath)
             self._set_status("Đang tải file...", "#2D72B8")
             self.root.update()
 
-            self.y_original, self.sr = librosa.load(filepath, sr=None)
-            self.y_processed = None
+            try:
+                self.y_original, self.sr = self._load_audio_input(filepath)
+                self.y_processed = None
 
-            duration_seconds = len(self.y_original) / self.sr if self.sr else 0
-            self._set_status(f"Đã tải: {filename} ({duration_seconds:.1f}s)", "#118A2C")
-            self.btn_save.configure(state="disabled")
+                duration_seconds = len(self.y_original) / self.sr if self.sr else 0
+                self._set_status(f"Đã tải: {filename} ({duration_seconds:.1f}s)", "#118A2C")
+                self.btn_save.configure(state="disabled")
+            except Exception as e:
+                self.y_original = None
+                self.y_processed = None
+                self._set_status("Không thể đọc file âm thanh", "#C73A3A")
+                messagebox.showerror(
+                    "Lỗi đọc file",
+                    f"Không thể đọc file {filename}.\nHãy thử định dạng khác hoặc kiểm tra codec.\n\nChi tiết: {e}",
+                )
 
     def toggle_record(self):
         if not self.is_recording:
