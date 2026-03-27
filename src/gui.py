@@ -10,16 +10,65 @@ class VoiceChangerApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Phần mềm thay đổi giọng nói")
-        self.root.geometry("920x650")
-        self.root.minsize(860, 620)
+        self.root.geometry("980x860")
+        self.root.minsize(920, 780)
         self.root.configure(fg_color="#E3E3E3")
 
         self.y_original = None
         self.y_processed = None
         self.sr = 44100
         self.is_recording = False
+        self.gain_db_var = ctk.DoubleVar(value=0.0)
+        self.effect_param_vars = {}
+        self.effect_param_specs = self._create_effect_param_specs()
 
         self._build_layout()
+
+    def _create_effect_param_specs(self):
+        return {
+            "soc_chuot": [
+                {"key": "n_steps", "label": "Pitch", "min": 0.0, "max": 12.0, "default": 5.0, "steps": 24, "suffix": " st"},
+            ],
+            "quai_vat": [
+                {"key": "n_steps", "label": "Pitch", "min": -12.0, "max": 0.0, "default": -5.0, "steps": 24, "suffix": " st"},
+            ],
+            "robot": [
+                {"key": "n_steps", "label": "Pitch", "min": -8.0, "max": 0.0, "default": -2.0, "steps": 16, "suffix": " st"},
+                {"key": "delay_ms", "label": "Delay", "min": 5.0, "max": 80.0, "default": 30.0, "steps": 75, "suffix": " ms"},
+                {"key": "mix", "label": "Mix", "min": 0.0, "max": 1.0, "default": 0.6, "steps": 100, "suffix": ""},
+            ],
+            "tua_nhanh": [
+                {"key": "rate", "label": "Tốc độ", "min": 1.1, "max": 2.5, "default": 1.5, "steps": 140, "suffix": "x"},
+            ],
+            "tua_cham": [
+                {"key": "rate", "label": "Tốc độ", "min": 0.4, "max": 0.95, "default": 0.7, "steps": 110, "suffix": "x"},
+            ],
+            "echo": [
+                {"key": "delay_ms", "label": "Delay", "min": 80.0, "max": 600.0, "default": 250.0, "steps": 104, "suffix": " ms"},
+                {"key": "mix", "label": "Mix", "min": 0.1, "max": 0.9, "default": 0.45, "steps": 80, "suffix": ""},
+            ],
+            "reverb": [
+                {"key": "base_delay_ms", "label": "Base delay", "min": 20.0, "max": 120.0, "default": 40.0, "steps": 100, "suffix": " ms"},
+                {"key": "wet", "label": "Wet", "min": 0.1, "max": 0.8, "default": 0.35, "steps": 70, "suffix": ""},
+                {"key": "decay", "label": "Decay", "min": 0.1, "max": 0.8, "default": 0.6, "steps": 70, "suffix": ""},
+            ],
+            "noise_reduce": [
+                {"key": "threshold_mult", "label": "Threshold", "min": 1.0, "max": 4.0, "default": 1.8, "steps": 120, "suffix": "x"},
+                {"key": "floor", "label": "Min floor", "min": 0.001, "max": 0.02, "default": 0.003, "steps": 190, "suffix": ""},
+                {"key": "attenuate", "label": "Attenuate", "min": 0.0, "max": 0.5, "default": 0.15, "steps": 100, "suffix": ""},
+            ],
+            "radio": [
+                {"key": "low_hz", "label": "Low cut", "min": 100.0, "max": 1500.0, "default": 500.0, "steps": 140, "suffix": " Hz"},
+                {"key": "high_hz", "label": "High cut", "min": 1800.0, "max": 5000.0, "default": 3200.0, "steps": 160, "suffix": " Hz"},
+                {"key": "drive", "label": "Drive", "min": 1.0, "max": 4.0, "default": 2.2, "steps": 120, "suffix": ""},
+                {"key": "noise", "label": "Noise", "min": 0.0, "max": 0.03, "default": 0.006, "steps": 120, "suffix": ""},
+            ],
+            "dien_thoai": [
+                {"key": "low_hz", "label": "Low cut", "min": 100.0, "max": 1000.0, "default": 300.0, "steps": 180, "suffix": " Hz"},
+                {"key": "high_hz", "label": "High cut", "min": 1500.0, "max": 4500.0, "default": 3400.0, "steps": 150, "suffix": " Hz"},
+                {"key": "drive", "label": "Drive", "min": 1.0, "max": 3.0, "default": 1.7, "steps": 80, "suffix": ""},
+            ],
+        }
 
     def _build_layout(self):
         self.container = ctk.CTkFrame(self.root, fg_color="transparent")
@@ -93,7 +142,7 @@ class VoiceChangerApp:
             self.container,
             fg_color="#D4D4D4",
             corner_radius=54,
-            height=430,
+            height=640,
             border_color="#C8C8C8",
             border_width=2,
         )
@@ -159,6 +208,9 @@ class VoiceChangerApp:
             row=4, column=1, sticky="w", pady=10
         )
 
+        self.effect_var.trace_add("write", self._on_effect_changed)
+        self._build_tuning_panel(effect_panel)
+
         action_frame = ctk.CTkFrame(effect_panel, fg_color="transparent")
         action_frame.pack(side="bottom", anchor="e", padx=56, pady=30)
 
@@ -190,6 +242,101 @@ class VoiceChangerApp:
             state="disabled",
         )
         self.btn_save.pack(side="left")
+
+    def _build_tuning_panel(self, parent):
+        tuning_panel = ctk.CTkFrame(parent, fg_color="#E7E7E7", corner_radius=22)
+        tuning_panel.pack(fill="x", padx=52, pady=(10, 4))
+
+        ctk.CTkLabel(
+            tuning_panel,
+            text="Tinh chỉnh âm thanh",
+            text_color="#1A1A1A",
+            font=ctk.CTkFont(family="Segoe UI", size=24, weight="bold"),
+        ).pack(anchor="w", padx=18, pady=(12, 6))
+
+        self._add_slider_row(
+            tuning_panel,
+            label_text="Gain",
+            var=self.gain_db_var,
+            min_value=-18.0,
+            max_value=18.0,
+            steps=144,
+            suffix=" dB",
+        )
+
+        self.effect_param_container = ctk.CTkFrame(tuning_panel, fg_color="transparent")
+        self.effect_param_container.pack(fill="x", padx=12, pady=(2, 10))
+        self._render_effect_controls(self.effect_var.get())
+
+    def _add_slider_row(self, parent, label_text, var, min_value, max_value, steps, suffix):
+        row = ctk.CTkFrame(parent, fg_color="transparent")
+        row.pack(fill="x", padx=12, pady=4)
+
+        ctk.CTkLabel(
+            row,
+            text=label_text,
+            width=130,
+            anchor="w",
+            text_color="#222222",
+            font=ctk.CTkFont(family="Segoe UI", size=18, weight="bold"),
+        ).pack(side="left", padx=(0, 8))
+
+        value_label = ctk.CTkLabel(
+            row,
+            text=f"{var.get():.2f}{suffix}",
+            width=100,
+            anchor="e",
+            text_color="#1A1A1A",
+            font=ctk.CTkFont(family="Segoe UI", size=16, weight="normal"),
+        )
+        value_label.pack(side="right")
+
+        slider = ctk.CTkSlider(
+            row,
+            from_=min_value,
+            to=max_value,
+            number_of_steps=steps,
+            variable=var,
+            progress_color="#1E90FF",
+            button_color="#1677D9",
+            command=lambda current: value_label.configure(text=f"{float(current):.2f}{suffix}"),
+        )
+        slider.pack(side="left", fill="x", expand=True, padx=(0, 8))
+
+    def _on_effect_changed(self, *_):
+        self._render_effect_controls(self.effect_var.get())
+
+    def _render_effect_controls(self, effect_name):
+        for child in self.effect_param_container.winfo_children():
+            child.destroy()
+
+        self.effect_param_vars = {}
+        specs = self.effect_param_specs.get(effect_name, [])
+        if not specs:
+            ctk.CTkLabel(
+                self.effect_param_container,
+                text="Hiệu ứng này không có thông số bổ sung",
+                text_color="#444444",
+                font=ctk.CTkFont(family="Segoe UI", size=16),
+            ).pack(anchor="w", padx=6, pady=6)
+            return
+
+        for spec in specs:
+            key = spec["key"]
+            var = ctk.DoubleVar(value=spec["default"])
+            self.effect_param_vars[key] = var
+            self._add_slider_row(
+                self.effect_param_container,
+                label_text=spec["label"],
+                var=var,
+                min_value=spec["min"],
+                max_value=spec["max"],
+                steps=spec["steps"],
+                suffix=spec["suffix"],
+            )
+
+    def _collect_effect_params(self):
+        return {key: float(var.get()) for key, var in self.effect_param_vars.items()}
 
     def _set_status(self, text, color="#1E1E1E"):
         self.lbl_status.configure(text=text, text_color=color)
@@ -260,7 +407,15 @@ class VoiceChangerApp:
 
         try:
             effect_chosen = self.effect_var.get()
-            self.y_processed = process_audio_data(self.y_original, self.sr, effect_chosen)
+            effect_params = self._collect_effect_params()
+            gain_db = float(self.gain_db_var.get())
+            self.y_processed = process_audio_data(
+                self.y_original,
+                self.sr,
+                effect_chosen,
+                params=effect_params,
+                gain_db=gain_db,
+            )
 
             self.btn_play.configure(text="Đang phát...")
             self.root.update()
