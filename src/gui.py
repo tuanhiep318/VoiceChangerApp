@@ -1,4 +1,6 @@
 import os
+import queue
+import tkinter as tk
 from tkinter import filedialog, messagebox
 
 import customtkinter as ctk
@@ -6,7 +8,7 @@ import librosa
 import numpy as np
 import soundfile as sf
 
-from src.effects import process_audio_data, start_recording, stop_recording, play_audio, save_to_file
+from src.effects import process_audio_data, start_recording, stop_recording, play_audio_stream, save_to_file
 
 class VoiceChangerApp:
     def __init__(self, root):
@@ -29,6 +31,13 @@ class VoiceChangerApp:
         self.scalable_widgets = []
         self.scalable_sliders = []
         self.base_metrics = {}
+        self.waveform_queue = queue.Queue(maxsize=8)
+        self.waveform_after_id = None
+        self.is_playing_audio = False
+        self.played_samples = 0
+        self.total_playback_samples = 0
+        self.wave_palette_var = ctk.StringVar(value="Aurora")
+        self.wave_smooth_var = ctk.DoubleVar(value=0.7)
 
         self._build_layout()
         self.root.bind("<Configure>", self._on_window_resize)
@@ -235,6 +244,7 @@ class VoiceChangerApp:
 
         self.effect_var.trace_add("write", self._on_effect_changed)
         self._build_tuning_panel(effect_panel)
+        self._build_waveform_panel(effect_panel)
 
         action_frame = ctk.CTkFrame(effect_panel, fg_color="transparent")
         action_frame.pack(side="bottom", anchor="e", padx=28, pady=16)
@@ -277,6 +287,114 @@ class VoiceChangerApp:
             self.btn_save: {"width": 130, "height": 46, "corner_radius": 23},
             self.effect_panel: {"corner_radius": 32},
         }
+
+    def _build_waveform_panel(self, parent):
+        wave_panel = ctk.CTkFrame(parent, fg_color="#111111", corner_radius=20)
+        wave_panel.pack(fill="x", padx=26, pady=(8, 6))
+
+        wave_title = ctk.CTkLabel(
+            wave_panel,
+            text="Sóng âm khi phát",
+            text_color="#EAF4FF",
+            font=ctk.CTkFont(family="Segoe UI", size=15, weight="bold"),
+        )
+        wave_title.pack(anchor="w", padx=14, pady=(10, 6))
+        self.scalable_widgets.append((wave_title, 15, "bold"))
+
+        self.wave_canvas = tk.Canvas(
+            wave_panel,
+            height=140,
+            bg="#0B0F16",
+            highlightthickness=0,
+            bd=0,
+        )
+        self.wave_canvas.pack(fill="x", padx=12, pady=(0, 12))
+        self.wave_canvas.bind("<Configure>", lambda _event: self._draw_waveform())
+
+        controls_row = ctk.CTkFrame(wave_panel, fg_color="transparent")
+        controls_row.pack(fill="x", padx=12, pady=(0, 8))
+
+        palette_label = ctk.CTkLabel(
+            controls_row,
+            text="Màu:",
+            text_color="#EAF4FF",
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+        )
+        palette_label.pack(side="left", padx=(0, 6))
+        self.scalable_widgets.append((palette_label, 12, "bold"))
+
+        self.wave_palette_switch = ctk.CTkSegmentedButton(
+            controls_row,
+            values=["Aurora", "Neon", "Sunset"],
+            variable=self.wave_palette_var,
+            command=lambda _value: self._draw_waveform(),
+            height=26,
+            width=230,
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+        )
+        self.wave_palette_switch.pack(side="left", padx=(0, 14))
+        self.scalable_widgets.append((self.wave_palette_switch, 12, "bold"))
+
+        smooth_label = ctk.CTkLabel(
+            controls_row,
+            text="Độ mượt:",
+            text_color="#EAF4FF",
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+        )
+        smooth_label.pack(side="left", padx=(0, 6))
+        self.scalable_widgets.append((smooth_label, 12, "bold"))
+
+        self.wave_smooth_slider = ctk.CTkSlider(
+            controls_row,
+            from_=0.0,
+            to=1.0,
+            number_of_steps=20,
+            variable=self.wave_smooth_var,
+            width=140,
+            progress_color="#4DD7FF",
+            button_color="#26A9D4",
+            command=lambda _value: self._draw_waveform(),
+        )
+        self.wave_smooth_slider.pack(side="left", padx=(0, 8))
+        self.scalable_sliders.append(self.wave_smooth_slider)
+
+        self.wave_smooth_value = ctk.CTkLabel(
+            controls_row,
+            text=f"{self.wave_smooth_var.get():.2f}",
+            text_color="#D0E7FF",
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="normal"),
+            width=38,
+            anchor="e",
+        )
+        self.wave_smooth_value.pack(side="left")
+        self.scalable_widgets.append((self.wave_smooth_value, 12, "normal"))
+
+        self.wave_progress = ctk.CTkProgressBar(wave_panel, height=10, corner_radius=6)
+        self.wave_progress.pack(fill="x", padx=12, pady=(0, 6))
+        self.wave_progress.set(0)
+
+        time_row = ctk.CTkFrame(wave_panel, fg_color="transparent")
+        time_row.pack(fill="x", padx=12, pady=(0, 10))
+
+        self.lbl_time_current = ctk.CTkLabel(
+            time_row,
+            text="00:00.0",
+            text_color="#AFC8E0",
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="normal"),
+        )
+        self.lbl_time_current.pack(side="left")
+        self.scalable_widgets.append((self.lbl_time_current, 12, "normal"))
+
+        self.lbl_time_total = ctk.CTkLabel(
+            time_row,
+            text="00:00.0",
+            text_color="#AFC8E0",
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="normal"),
+        )
+        self.lbl_time_total.pack(side="right")
+        self.scalable_widgets.append((self.lbl_time_total, 12, "normal"))
+
+        self._draw_waveform()
 
     def _build_tuning_panel(self, parent):
         tuning_panel = ctk.CTkFrame(parent, fg_color="#E7E7E7", corner_radius=22)
@@ -417,6 +535,192 @@ class VoiceChangerApp:
     def _set_status(self, text, color="#1E1E1E"):
         self.lbl_status.configure(text=text, text_color=color)
 
+    def _get_wave_palette(self):
+        palettes = {
+            "Aurora": {
+                "bg": "#020726",
+                "axis": "#122150",
+                "hint": "#7D8CC0",
+                "start": "#D13FFF",
+                "mid": "#6A39FF",
+                "end": "#57F3FF",
+            },
+            "Neon": {
+                "bg": "#031914",
+                "axis": "#13392C",
+                "hint": "#78B8A1",
+                "start": "#7DFF68",
+                "mid": "#23E08A",
+                "end": "#45FFF0",
+            },
+            "Sunset": {
+                "bg": "#200B14",
+                "axis": "#4A1F2F",
+                "hint": "#C59AAB",
+                "start": "#FF5A8F",
+                "mid": "#FF7A59",
+                "end": "#FFD35D",
+            },
+        }
+        return palettes.get(self.wave_palette_var.get(), palettes["Aurora"])
+
+    def _hex_to_rgb(self, color):
+        color = color.lstrip("#")
+        return int(color[0:2], 16), int(color[2:4], 16), int(color[4:6], 16)
+
+    def _rgb_to_hex(self, rgb):
+        return f"#{rgb[0]:02X}{rgb[1]:02X}{rgb[2]:02X}"
+
+    def _mix_color(self, c1, c2, ratio):
+        ratio = min(1.0, max(0.0, float(ratio)))
+        r1, g1, b1 = self._hex_to_rgb(c1)
+        r2, g2, b2 = self._hex_to_rgb(c2)
+        mixed = (
+            int(r1 + (r2 - r1) * ratio),
+            int(g1 + (g2 - g1) * ratio),
+            int(b1 + (b2 - b1) * ratio),
+        )
+        return self._rgb_to_hex(mixed)
+
+    def _gradient_color(self, t, palette):
+        t = min(1.0, max(0.0, float(t)))
+        if t <= 0.5:
+            local_t = t / 0.5
+            return self._mix_color(palette["start"], palette["mid"], local_t)
+        local_t = (t - 0.5) / 0.5
+        return self._mix_color(palette["mid"], palette["end"], local_t)
+
+    def _format_time(self, seconds):
+        seconds = max(0.0, float(seconds))
+        minutes = int(seconds // 60)
+        remain = seconds - minutes * 60
+        return f"{minutes:02d}:{remain:04.1f}"
+
+    def _reset_playback_progress(self):
+        self.played_samples = 0
+        self.total_playback_samples = 0
+        self.wave_progress.set(0)
+        self.lbl_time_current.configure(text="00:00.0")
+        self.lbl_time_total.configure(text="00:00.0")
+
+    def _update_progress_ui(self):
+        if self.sr <= 0:
+            return
+
+        total_seconds = self.total_playback_samples / self.sr if self.total_playback_samples else 0.0
+        current_seconds = self.played_samples / self.sr
+        progress = min(1.0, self.played_samples / self.total_playback_samples) if self.total_playback_samples else 0.0
+
+        self.wave_progress.set(progress)
+        self.lbl_time_current.configure(text=self._format_time(current_seconds))
+        self.lbl_time_total.configure(text=self._format_time(total_seconds))
+
+    def _draw_waveform(self, samples=None):
+        if not hasattr(self, "wave_canvas"):
+            return
+
+        width = max(self.wave_canvas.winfo_width(), 10)
+        height = max(self.wave_canvas.winfo_height(), 10)
+        mid = height / 2
+        palette = self._get_wave_palette()
+        smoothness = float(self.wave_smooth_var.get())
+        self.wave_smooth_value.configure(text=f"{smoothness:.2f}")
+        self.wave_canvas.configure(bg=palette["bg"])
+        self.wave_progress.configure(progress_color=palette["end"], fg_color=self._mix_color(palette["bg"], "#FFFFFF", 0.12))
+        self.wave_smooth_slider.configure(
+            progress_color=palette["end"],
+            button_color=self._mix_color(palette["end"], "#FFFFFF", 0.25),
+        )
+
+        self.wave_canvas.delete("all")
+        self.wave_canvas.create_line(0, mid, width, mid, fill=palette["axis"], width=1)
+
+        if samples is None or len(samples) < 2:
+            self.wave_canvas.create_text(
+                width / 2,
+                mid,
+                text="Nhấn 'Áp dụng và nghe thử' để xem waveform realtime",
+                fill=palette["hint"],
+                font=("Segoe UI", 10),
+            )
+            return
+
+        target_points = min(max(width, 90), 700)
+        indexes = np.linspace(0, len(samples) - 1, target_points, dtype=int)
+        reduced = np.asarray(samples[indexes], dtype=np.float32)
+
+        envelope = np.abs(reduced)
+        window = max(1, int(2 + smoothness * 26))
+        if window > 1:
+            kernel = np.ones(window, dtype=np.float32) / window
+            envelope = np.convolve(envelope, kernel, mode="same")
+
+        peak = float(np.max(envelope)) if len(envelope) else 0.0
+        if peak < 1e-6:
+            peak = 1.0
+        envelope = np.clip(envelope / peak, 0.0, 1.0)
+        envelope = np.power(envelope, 0.72)
+
+        min_half = max(1.0, height * 0.012)
+        max_half = height * 0.45
+
+        for i, value in enumerate(envelope):
+            x = (i / max(target_points - 1, 1)) * (width - 1)
+            half = min_half + float(value) * (max_half - min_half)
+            color = self._gradient_color(i / max(target_points - 1, 1), palette)
+            glow_color = self._mix_color(color, palette["bg"], 0.62)
+
+            self.wave_canvas.create_line(x, mid - half, x, mid + half, fill=glow_color, width=4)
+            self.wave_canvas.create_line(x, mid - half, x, mid + half, fill=color, width=2)
+
+    def _enqueue_wave_chunk(self, chunk):
+        if chunk is None or len(chunk) == 0:
+            return
+
+        try:
+            self.waveform_queue.put_nowait(chunk)
+        except queue.Full:
+            try:
+                _ = self.waveform_queue.get_nowait()
+            except queue.Empty:
+                pass
+            self.waveform_queue.put_nowait(chunk)
+
+    def _start_waveform_loop(self):
+        if self.waveform_after_id is None:
+            self.waveform_after_id = self.root.after(30, self._update_waveform)
+
+    def _update_waveform(self):
+        latest_chunk = None
+        consumed_samples = 0
+        while True:
+            try:
+                latest_chunk = self.waveform_queue.get_nowait()
+                consumed_samples += len(latest_chunk)
+            except queue.Empty:
+                break
+
+        if latest_chunk is not None:
+            self._draw_waveform(latest_chunk)
+            self.played_samples += consumed_samples
+            self._update_progress_ui()
+
+        if self.is_playing_audio or (not self.waveform_queue.empty()):
+            self.waveform_after_id = self.root.after(30, self._update_waveform)
+        else:
+            self.waveform_after_id = None
+
+    def _on_audio_finished(self):
+        self.root.after(0, self._finish_audio_ui)
+
+    def _finish_audio_ui(self):
+        self.is_playing_audio = False
+        self.played_samples = self.total_playback_samples
+        self._update_progress_ui()
+        self.btn_play.configure(text="Áp dụng và nghe thử", state="normal")
+        self.btn_browse.configure(state="normal")
+        self._set_status("Đã phát xong bản xem thử", "#118A2C")
+
     def _set_recording_ui(self, recording):
         if recording:
             self.btn_record.configure(text="Dừng", fg_color="#C81E1E", hover_color="#A81414")
@@ -461,6 +765,8 @@ class VoiceChangerApp:
                 duration_seconds = len(self.y_original) / self.sr if self.sr else 0
                 self._set_status(f"Đã tải: {filename} ({duration_seconds:.1f}s)", "#118A2C")
                 self.btn_save.configure(state="disabled")
+                self._reset_playback_progress()
+                self._draw_waveform()
             except Exception as e:
                 self.y_original = None
                 self.y_processed = None
@@ -498,6 +804,8 @@ class VoiceChangerApp:
                 self.y_processed = None
                 thoi_gian = len(self.y_original) / self.sr if self.sr else 0
                 self._set_status(f"Đã ghi âm xong ({thoi_gian:.1f}s)", "#118A2C")
+                self._reset_playback_progress()
+                self._draw_waveform()
             else:
                 self._set_status("Thu âm rỗng, vui lòng thử lại", "#C73A3A")
 
@@ -526,14 +834,23 @@ class VoiceChangerApp:
 
             self.btn_play.configure(text="Đang phát...")
             self.root.update()
-            play_audio(self.y_processed, self.sr)
+            self.is_playing_audio = True
+            self.played_samples = 0
+            self.total_playback_samples = len(self.y_processed)
+            self._update_progress_ui()
+            self._start_waveform_loop()
+            play_audio_stream(
+                self.y_processed,
+                self.sr,
+                on_chunk=self._enqueue_wave_chunk,
+                on_finished=self._on_audio_finished,
+            )
 
             self.btn_save.configure(state="normal")
-            self._set_status("Đã áp dụng hiệu ứng và phát thử", "#118A2C")
+            self._set_status("Đang phát bản đã áp dụng hiệu ứng", "#118A2C")
         except Exception as e:
             messagebox.showerror("Lỗi Xử lý", str(e))
             self._set_status("Không thể xử lý âm thanh", "#C73A3A")
-        finally:
             self.btn_play.configure(text="Áp dụng và nghe thử", state="normal")
             self.btn_browse.configure(state="normal")
 

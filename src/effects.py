@@ -130,6 +130,7 @@ def process_audio_data(y, sr, effect_name, params=None, gain_db=0.0):
 # --- HỆ THỐNG THU ÂM KHÔNG GIỚI HẠN THỜI GIAN ---
 audio_queue = queue.Queue()
 recording_stream = None
+playback_stream = None
 
 def audio_callback(indata, frames, time, status):
     """Hàm này chạy ngầm liên tục, gom từng mảnh âm thanh nhỏ vào hàng đợi"""
@@ -164,11 +165,97 @@ def stop_recording():
 
 # --- HÀM PHÁT & LƯU ---
 def play_audio(y, sr):
-    sd.stop()
-    sd.play(y, sr)
+    stop_audio()
+
+    if y is None:
+        return
+
+    samples = np.asarray(y, dtype=np.float32).flatten()
+    if len(samples) == 0:
+        return
+
+    index = 0
+
+    def callback(outdata, frames, time, status):
+        nonlocal index
+        if status:
+            print(status, flush=True)
+
+        outdata.fill(0)
+        end_index = min(index + frames, len(samples))
+        chunk = samples[index:end_index]
+
+        if len(chunk) > 0:
+            outdata[:len(chunk), 0] = chunk
+
+        index = end_index
+        if index >= len(samples):
+            raise sd.CallbackStop
+
+    global playback_stream
+    playback_stream = sd.OutputStream(
+        samplerate=sr,
+        channels=1,
+        dtype="float32",
+        callback=callback,
+    )
+    playback_stream.start()
 
 def stop_audio():
+    global playback_stream
+    if playback_stream is not None:
+        try:
+            playback_stream.stop()
+            playback_stream.close()
+        finally:
+            playback_stream = None
     sd.stop()
+
+
+def play_audio_stream(y, sr, on_chunk=None, on_finished=None, blocksize=1024):
+    stop_audio()
+
+    if y is None:
+        return
+
+    samples = np.asarray(y, dtype=np.float32).flatten()
+    if len(samples) == 0:
+        return
+
+    index = 0
+
+    def callback(outdata, frames, time, status):
+        nonlocal index
+        if status:
+            print(status, flush=True)
+
+        outdata.fill(0)
+        end_index = min(index + frames, len(samples))
+        chunk = samples[index:end_index]
+
+        if len(chunk) > 0:
+            outdata[:len(chunk), 0] = chunk
+            if on_chunk is not None:
+                on_chunk(chunk.copy())
+
+        index = end_index
+        if index >= len(samples):
+            raise sd.CallbackStop
+
+    def finished_callback():
+        if on_finished is not None:
+            on_finished()
+
+    global playback_stream
+    playback_stream = sd.OutputStream(
+        samplerate=sr,
+        channels=1,
+        dtype="float32",
+        blocksize=blocksize,
+        callback=callback,
+        finished_callback=finished_callback,
+    )
+    playback_stream.start()
 
 def save_to_file(output_path, y, sr):
     sf.write(output_path, y, sr)
