@@ -8,7 +8,7 @@ import librosa
 import numpy as np
 import soundfile as sf
 
-from src.effects import process_audio_data, start_recording, stop_recording, play_audio_stream, save_to_file
+from src.effects import process_audio_data, start_recording, stop_recording, play_audio_stream, save_to_file, stop_audio
 
 class VoiceChangerApp:
     def __init__(self, root):
@@ -18,7 +18,7 @@ class VoiceChangerApp:
         self.base_height = 720
         self._configure_window()
         self.root.minsize(820, 560)
-        self.root.configure(fg_color="#E3E3E3")
+        self.root.configure(fg_color="#14161A")
         self._current_scale = 1.0
 
         self.y_original = None
@@ -38,6 +38,19 @@ class VoiceChangerApp:
         self.total_playback_samples = 0
         self.wave_palette_var = ctk.StringVar(value="Aurora")
         self.wave_smooth_var = ctk.DoubleVar(value=0.7)
+        self.effect_buttons = {}
+        self.effect_options = [
+            ("Sóc chuột", "soc_chuot"),
+            ("Quái vật", "quai_vat"),
+            ("Robot", "robot"),
+            ("Tua nhanh", "tua_nhanh"),
+            ("Tua chậm", "tua_cham"),
+            ("Echo", "echo"),
+            ("Reverb", "reverb"),
+            ("Noise reduce", "noise_reduce"),
+            ("Radio", "radio"),
+            ("Điện thoại", "dien_thoai"),
+        ]
 
         self._build_layout()
         self.root.bind("<Configure>", self._on_window_resize)
@@ -101,16 +114,37 @@ class VoiceChangerApp:
 
     def _build_layout(self):
         self.container = ctk.CTkFrame(self.root, fg_color="transparent")
-        self.container.pack(fill="both", expand=True, padx=24, pady=18)
+        self.container.pack(fill="both", expand=True, padx=22, pady=18)
+
+        self.title_shell = ctk.CTkFrame(
+            self.container,
+            fg_color="#EDEDED",
+            corner_radius=28,
+            border_width=3,
+            border_color="#FFFFFF",
+            height=64,
+        )
+        self.title_shell.pack(fill="x", pady=(0, 12))
+        self.title_shell.pack_propagate(False)
+
+        ctk.CTkFrame(self.title_shell, width=40, fg_color="#131519", corner_radius=20).pack(
+            side="left", padx=(8, 10), pady=8
+        )
+        ctk.CTkFrame(self.title_shell, width=40, fg_color="#131519", corner_radius=20).pack(
+            side="right", padx=(10, 8), pady=8
+        )
 
         self.title_label = ctk.CTkLabel(
-            self.container,
-            text="Phần mềm thay đổi giọng nói",
-            text_color="#111111",
-            font=ctk.CTkFont(family="Segoe UI", size=34, weight="bold"),
+            self.title_shell,
+            text="PHẦN MỀM THAY ĐỔI GIỌNG NÓI",
+            text_color="#0D1114",
+            fg_color="#9EDF56",
+            corner_radius=22,
+            height=44,
+            font=ctk.CTkFont(family="Bahnschrift", size=30, weight="bold"),
         )
-        self.title_label.pack(pady=(0, 14))
-        self.scalable_widgets.append((self.title_label, 34, "bold"))
+        self.title_label.pack(fill="x", expand=True, padx=4, pady=8)
+        self.scalable_widgets.append((self.title_label, 30, "bold"))
 
         self._build_input_panel()
         self._build_effect_panel()
@@ -118,298 +152,214 @@ class VoiceChangerApp:
     def _build_input_panel(self):
         input_panel = ctk.CTkFrame(
             self.container,
-            fg_color="#E9E9E9",
-            border_color="#1E90FF",
-            border_width=3,
-            corner_radius=30,
+            fg_color="transparent",
         )
         input_panel.pack(fill="x", pady=(0, 12))
 
-        self.lbl_status = ctk.CTkLabel(
+        status_box = ctk.CTkFrame(
             input_panel,
-            text="Chưa có âm thanh đầu vào",
-            text_color="#1E1E1E",
-            anchor="w",
-            font=ctk.CTkFont(family="Segoe UI", size=20, weight="normal"),
+            fg_color="#EDEDED",
+            corner_radius=20,
+            border_width=2,
+            border_color="#B5B5B5",
+            height=42,
         )
-        self.lbl_status.pack(side="left", padx=(20, 16), pady=14, expand=True, fill="x")
-        self.scalable_widgets.append((self.lbl_status, 20, "normal"))
+        status_box.pack(side="left", fill="x", expand=True, padx=(0, 12))
+        status_box.pack_propagate(False)
+
+        self.lbl_status = ctk.CTkLabel(
+            status_box,
+            text="Chưa có âm thanh đầu vào",
+            text_color="#6A6A6A",
+            anchor="w",
+            font=ctk.CTkFont(family="Bahnschrift", size=18, weight="normal"),
+        )
+        self.lbl_status.pack(side="left", padx=(16, 16), pady=8, expand=True, fill="x")
+        self.scalable_widgets.append((self.lbl_status, 18, "normal"))
 
         button_box = ctk.CTkFrame(input_panel, fg_color="transparent")
-        button_box.pack(side="right", padx=(0, 16), pady=10)
+        button_box.pack(side="right")
 
         self.btn_browse = ctk.CTkButton(
             button_box,
             text="Tải âm thanh lên",
             command=self.load_file,
-            width=150,
-            height=44,
+            width=132,
+            height=40,
             corner_radius=22,
-            text_color="#FFFFFF",
-            fg_color="#3E5FFF",
-            hover_color="#334DE0",
-            font=ctk.CTkFont(family="Segoe UI", size=16, weight="bold"),
+            text_color="#08243F",
+            fg_color="#78AEE8",
+            hover_color="#6798CC",
+            border_width=2,
+            border_color="#2E5A9E",
+            font=ctk.CTkFont(family="Bahnschrift", size=17, weight="bold"),
         )
-        self.btn_browse.pack(side="left", padx=(0, 14))
-        self.scalable_widgets.append((self.btn_browse, 16, "bold"))
+        self.btn_browse.pack(side="left", padx=(0, 10))
+        self.scalable_widgets.append((self.btn_browse, 17, "bold"))
 
         self.btn_record = ctk.CTkButton(
             button_box,
             text="Ghi âm",
             command=self.toggle_record,
-            width=112,
-            height=44,
+            width=94,
+            height=40,
             corner_radius=22,
-            text_color="#FFFFFF",
-            fg_color="#FF2B35",
-            hover_color="#DC2029",
-            font=ctk.CTkFont(family="Segoe UI", size=16, weight="bold"),
+            text_color="#2E1B00",
+            fg_color="#FF910C",
+            hover_color="#E67F00",
+            border_width=2,
+            border_color="#BE5D00",
+            font=ctk.CTkFont(family="Bahnschrift", size=17, weight="bold"),
         )
         self.btn_record.pack(side="left")
-        self.scalable_widgets.append((self.btn_record, 16, "bold"))
+        self.scalable_widgets.append((self.btn_record, 17, "bold"))
 
     def _build_effect_panel(self):
         effect_panel = ctk.CTkFrame(
             self.container,
-            fg_color="#D4D4D4",
-            corner_radius=32,
-            border_color="#C8C8C8",
-            border_width=2,
+            fg_color="transparent",
         )
         effect_panel.pack(fill="both", expand=True)
         self.effect_panel = effect_panel
 
-        title = ctk.CTkLabel(
-            effect_panel,
-            text="Lựa chọn hiệu ứng âm thanh",
-            text_color="#111111",
-            font=ctk.CTkFont(family="Segoe UI", size=30, weight="bold"),
-        )
-        title.pack(pady=(14, 6))
-        self.scalable_widgets.append((title, 30, "bold"))
+        mid_panel = ctk.CTkFrame(effect_panel, fg_color="transparent")
+        mid_panel.pack(fill="both", expand=True)
+        mid_panel.grid_columnconfigure(0, weight=3)
+        mid_panel.grid_columnconfigure(1, weight=2)
+        mid_panel.grid_rowconfigure(0, weight=1)
 
-        options_frame = ctk.CTkFrame(effect_panel, fg_color="transparent")
-        options_frame.pack(fill="x", padx=40, pady=(4, 0))
+        select_card = ctk.CTkFrame(mid_panel, fg_color="#2E3034", corner_radius=24)
+        select_card.grid(row=0, column=0, sticky="nsew", padx=(0, 10), pady=(0, 12))
+
+        title = ctk.CTkLabel(
+            select_card,
+            text="Lựa chọn hiệu ứng âm thanh",
+            text_color="#EFEFEF",
+            font=ctk.CTkFont(family="Bahnschrift", size=24, weight="bold"),
+        )
+        title.pack(anchor="w", padx=20, pady=(14, 10))
+        self.scalable_widgets.append((title, 24, "bold"))
+
+        options_frame = ctk.CTkFrame(select_card, fg_color="transparent")
+        options_frame.pack(fill="both", expand=True, padx=20, pady=(0, 18))
         options_frame.grid_columnconfigure(0, weight=1)
         options_frame.grid_columnconfigure(1, weight=1)
 
         self.effect_var = ctk.StringVar(value="soc_chuot")
-        rb_style = {
-            "variable": self.effect_var,
-            "font": ctk.CTkFont(family="Segoe UI", size=20, weight="normal"),
-            "text_color": "#111111",
-            "fg_color": "#1E90FF",
-            "hover_color": "#4CA8FF",
-            "border_color": "#7A7A7A",
-            "border_width_unchecked": 2,
-            "border_width_checked": 2,
-            "radiobutton_width": 22,
-            "radiobutton_height": 22,
-            "text_color_disabled": "#111111",
-        }
+        for idx, (label, value) in enumerate(self.effect_options):
+            row = idx // 2
+            col = idx % 2
+            btn = ctk.CTkButton(
+                options_frame,
+                text=label,
+                command=lambda effect=value: self._set_effect(effect),
+                height=38,
+                corner_radius=10,
+                fg_color="#E7E7E7",
+                hover_color="#CECECE",
+                text_color="#212121",
+                font=ctk.CTkFont(family="Bahnschrift", size=18, weight="normal"),
+            )
+            btn.grid(row=row, column=col, sticky="ew", padx=6, pady=6)
+            self.effect_buttons[value] = btn
+            self.scalable_widgets.append((btn, 18, "normal"))
 
-        ctk.CTkRadioButton(options_frame, text="Sóc chuột", value="soc_chuot", **rb_style).grid(
-            row=0, column=0, sticky="w", pady=10
-        )
-        ctk.CTkRadioButton(options_frame, text="Robot", value="robot", **rb_style).grid(
-            row=0, column=1, sticky="w", pady=10
-        )
-        ctk.CTkRadioButton(options_frame, text="Quái vật", value="quai_vat", **rb_style).grid(
-            row=1, column=0, sticky="w", pady=10
-        )
-        ctk.CTkRadioButton(options_frame, text="Tua nhanh", value="tua_nhanh", **rb_style).grid(
-            row=1, column=1, sticky="w", pady=10
-        )
-        ctk.CTkRadioButton(options_frame, text="Tua chậm", value="tua_cham", **rb_style).grid(
-            row=2, column=0, sticky="w", pady=10
-        )
-        ctk.CTkRadioButton(options_frame, text="Echo", value="echo", **rb_style).grid(
-            row=2, column=1, sticky="w", pady=10
-        )
-        ctk.CTkRadioButton(options_frame, text="Reverb", value="reverb", **rb_style).grid(
-            row=3, column=0, sticky="w", pady=10
-        )
-        ctk.CTkRadioButton(options_frame, text="Noise reduce", value="noise_reduce", **rb_style).grid(
-            row=3, column=1, sticky="w", pady=10
-        )
-        ctk.CTkRadioButton(options_frame, text="Radio", value="radio", **rb_style).grid(
-            row=4, column=0, sticky="w", pady=10
-        )
-        ctk.CTkRadioButton(options_frame, text="Điện thoại", value="dien_thoai", **rb_style).grid(
-            row=4, column=1, sticky="w", pady=10
-        )
+        self._build_tuning_panel(mid_panel)
 
-        for widget in options_frame.winfo_children():
-            self.scalable_widgets.append((widget, 20, "normal"))
-
-        self.effect_var.trace_add("write", self._on_effect_changed)
-        self._build_tuning_panel(effect_panel)
         self._build_waveform_panel(effect_panel)
 
-        action_frame = ctk.CTkFrame(effect_panel, fg_color="transparent")
-        action_frame.pack(side="bottom", anchor="e", padx=28, pady=16)
+        action_frame = ctk.CTkFrame(self.wave_panel, fg_color="transparent")
+        action_frame.pack(anchor="ne", padx=16, pady=(10, 0))
 
         self.btn_play = ctk.CTkButton(
             action_frame,
-            text="Áp dụng và nghe thử",
+            text="Phát",
             command=self.process_and_play,
-            width=210,
-            height=46,
+            width=86,
+            height=36,
             corner_radius=23,
-            text_color="#F5F9D2",
-            fg_color="#6FBF73",
-            hover_color="#5AA663",
-            font=ctk.CTkFont(family="Segoe UI", size=17, weight="bold"),
+            text_color="#203100",
+            fg_color="#96DD47",
+            hover_color="#82C53C",
+            border_width=2,
+            border_color="#588D1D",
+            font=ctk.CTkFont(family="Bahnschrift", size=18, weight="bold"),
         )
-        self.btn_play.pack(side="left", padx=(0, 20))
-        self.scalable_widgets.append((self.btn_play, 17, "bold"))
+        self.btn_play.pack(side="left", padx=(0, 10))
+        self.scalable_widgets.append((self.btn_play, 18, "bold"))
 
         self.btn_save = ctk.CTkButton(
             action_frame,
             text="Lưu file",
             command=self.save_audio,
-            width=130,
-            height=46,
+            width=90,
+            height=36,
             corner_radius=23,
-            text_color="#FFFFFF",
-            fg_color="#08C449",
-            hover_color="#06A73D",
-            font=ctk.CTkFont(family="Segoe UI", size=17, weight="bold"),
+            text_color="#321A00",
+            fg_color="#FF910C",
+            hover_color="#E57E00",
+            border_width=2,
+            border_color="#C76700",
+            font=ctk.CTkFont(family="Bahnschrift", size=18, weight="bold"),
             state="disabled",
         )
         self.btn_save.pack(side="left")
-        self.scalable_widgets.append((self.btn_save, 17, "bold"))
+        self.scalable_widgets.append((self.btn_save, 18, "bold"))
+
+        self._refresh_effect_buttons()
+        self._render_effect_controls(self.effect_var.get())
 
         self.base_metrics = {
-            self.btn_browse: {"width": 150, "height": 44, "corner_radius": 22},
-            self.btn_record: {"width": 112, "height": 44, "corner_radius": 22},
-            self.btn_play: {"width": 210, "height": 46, "corner_radius": 23},
-            self.btn_save: {"width": 130, "height": 46, "corner_radius": 23},
-            self.effect_panel: {"corner_radius": 32},
+            self.btn_browse: {"width": 132, "height": 40, "corner_radius": 22},
+            self.btn_record: {"width": 94, "height": 40, "corner_radius": 22},
+            self.btn_play: {"width": 86, "height": 36, "corner_radius": 23},
+            self.btn_save: {"width": 90, "height": 36, "corner_radius": 23},
         }
 
     def _build_waveform_panel(self, parent):
-        wave_panel = ctk.CTkFrame(parent, fg_color="#111111", corner_radius=20)
-        wave_panel.pack(fill="x", padx=26, pady=(8, 6))
+        wave_panel = ctk.CTkFrame(parent, fg_color="#2F3135", corner_radius=26)
+        wave_panel.pack(fill="x", padx=0, pady=(0, 0), ipady=8)
+        self.wave_panel = wave_panel
 
         wave_title = ctk.CTkLabel(
             wave_panel,
             text="Sóng âm khi phát",
-            text_color="#EAF4FF",
-            font=ctk.CTkFont(family="Segoe UI", size=15, weight="bold"),
+            text_color="#EFEFEF",
+            font=ctk.CTkFont(family="Bahnschrift", size=21, weight="bold"),
         )
-        wave_title.pack(anchor="w", padx=14, pady=(10, 6))
-        self.scalable_widgets.append((wave_title, 15, "bold"))
+        wave_title.pack(anchor="w", padx=24, pady=(8, 4))
+        self.scalable_widgets.append((wave_title, 21, "bold"))
 
         self.wave_canvas = tk.Canvas(
             wave_panel,
-            height=140,
-            bg="#0B0F16",
+            height=150,
+            bg="#2A2D31",
             highlightthickness=0,
             bd=0,
         )
-        self.wave_canvas.pack(fill="x", padx=12, pady=(0, 12))
+        self.wave_canvas.pack(fill="x", padx=20, pady=(2, 6))
         self.wave_canvas.bind("<Configure>", lambda _event: self._draw_waveform())
 
-        controls_row = ctk.CTkFrame(wave_panel, fg_color="transparent")
-        controls_row.pack(fill="x", padx=12, pady=(0, 8))
-
-        palette_label = ctk.CTkLabel(
-            controls_row,
-            text="Màu:",
-            text_color="#EAF4FF",
-            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
-        )
-        palette_label.pack(side="left", padx=(0, 6))
-        self.scalable_widgets.append((palette_label, 12, "bold"))
-
-        self.wave_palette_switch = ctk.CTkSegmentedButton(
-            controls_row,
-            values=["Aurora", "Neon", "Sunset"],
-            variable=self.wave_palette_var,
-            command=lambda _value: self._draw_waveform(),
-            height=26,
-            width=230,
-            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
-        )
-        self.wave_palette_switch.pack(side="left", padx=(0, 14))
-        self.scalable_widgets.append((self.wave_palette_switch, 12, "bold"))
-
-        smooth_label = ctk.CTkLabel(
-            controls_row,
-            text="Độ mượt:",
-            text_color="#EAF4FF",
-            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
-        )
-        smooth_label.pack(side="left", padx=(0, 6))
-        self.scalable_widgets.append((smooth_label, 12, "bold"))
-
-        self.wave_smooth_slider = ctk.CTkSlider(
-            controls_row,
-            from_=0.0,
-            to=1.0,
-            number_of_steps=20,
-            variable=self.wave_smooth_var,
-            width=140,
-            progress_color="#4DD7FF",
-            button_color="#26A9D4",
-            command=lambda _value: self._draw_waveform(),
-        )
-        self.wave_smooth_slider.pack(side="left", padx=(0, 8))
-        self.scalable_sliders.append(self.wave_smooth_slider)
-
-        self.wave_smooth_value = ctk.CTkLabel(
-            controls_row,
-            text=f"{self.wave_smooth_var.get():.2f}",
-            text_color="#D0E7FF",
-            font=ctk.CTkFont(family="Segoe UI", size=12, weight="normal"),
-            width=38,
-            anchor="e",
-        )
-        self.wave_smooth_value.pack(side="left")
-        self.scalable_widgets.append((self.wave_smooth_value, 12, "normal"))
-
         self.wave_progress = ctk.CTkProgressBar(wave_panel, height=10, corner_radius=6)
-        self.wave_progress.pack(fill="x", padx=12, pady=(0, 6))
+        self.wave_progress.pack(fill="x", padx=20, pady=(0, 6))
         self.wave_progress.set(0)
-
-        time_row = ctk.CTkFrame(wave_panel, fg_color="transparent")
-        time_row.pack(fill="x", padx=12, pady=(0, 10))
-
-        self.lbl_time_current = ctk.CTkLabel(
-            time_row,
-            text="00:00.0",
-            text_color="#AFC8E0",
-            font=ctk.CTkFont(family="Segoe UI", size=12, weight="normal"),
-        )
-        self.lbl_time_current.pack(side="left")
-        self.scalable_widgets.append((self.lbl_time_current, 12, "normal"))
-
-        self.lbl_time_total = ctk.CTkLabel(
-            time_row,
-            text="00:00.0",
-            text_color="#AFC8E0",
-            font=ctk.CTkFont(family="Segoe UI", size=12, weight="normal"),
-        )
-        self.lbl_time_total.pack(side="right")
-        self.scalable_widgets.append((self.lbl_time_total, 12, "normal"))
 
         self._draw_waveform()
 
     def _build_tuning_panel(self, parent):
-        tuning_panel = ctk.CTkFrame(parent, fg_color="#E7E7E7", corner_radius=22)
-        tuning_panel.pack(fill="x", padx=26, pady=(8, 4))
+        tuning_panel = ctk.CTkFrame(parent, fg_color="#2E3034", corner_radius=24)
+        tuning_panel.grid(row=0, column=1, sticky="nsew", padx=(10, 0), pady=(0, 12))
         self.tuning_panel = tuning_panel
 
         ctk.CTkLabel(
             tuning_panel,
             text="Tinh chỉnh âm thanh",
-            text_color="#1A1A1A",
-            font=ctk.CTkFont(family="Segoe UI", size=18, weight="bold"),
-        ).pack(anchor="w", padx=18, pady=(12, 6))
-        self.scalable_widgets.append((tuning_panel.winfo_children()[0], 18, "bold"))
+            text_color="#EFEFEF",
+            font=ctk.CTkFont(family="Bahnschrift", size=24, weight="bold"),
+        ).pack(anchor="w", padx=20, pady=(14, 10))
+        self.scalable_widgets.append((tuning_panel.winfo_children()[0], 24, "bold"))
 
-        self.base_metrics[self.tuning_panel] = {"corner_radius": 22}
+        self.base_metrics[self.tuning_panel] = {"corner_radius": 24}
 
         self._add_slider_row(
             tuning_panel,
@@ -418,38 +368,99 @@ class VoiceChangerApp:
             min_value=-18.0,
             max_value=18.0,
             steps=144,
-            suffix=" dB",
+            suffix=" db",
         )
 
+        ctk.CTkLabel(
+            tuning_panel,
+            text="Màu sóng",
+            text_color="#EFEFEF",
+            anchor="w",
+            font=ctk.CTkFont(family="Bahnschrift", size=17, weight="normal"),
+        ).pack(fill="x", padx=20, pady=(6, 4))
+
+        self.wave_palette_switch = ctk.CTkSegmentedButton(
+            tuning_panel,
+            values=["Aurora", "Neon", "Sunset"],
+            variable=self.wave_palette_var,
+            command=lambda _value: self._draw_waveform(),
+            height=30,
+            font=ctk.CTkFont(family="Bahnschrift", size=14, weight="bold"),
+            fg_color="#1B1D22",
+            selected_color="#78AEE8",
+            selected_hover_color="#6A9BD0",
+            unselected_color="#F2F2F2",
+            unselected_hover_color="#E2E2E2",
+            text_color="#0F141A",
+            text_color_disabled="#999999",
+        )
+        self.wave_palette_switch.pack(fill="x", padx=20, pady=(0, 8))
+        self.scalable_widgets.append((self.wave_palette_switch, 14, "bold"))
+
+        smooth_row = ctk.CTkFrame(tuning_panel, fg_color="transparent")
+        smooth_row.pack(fill="x", padx=20, pady=(2, 8))
+
+        smooth_label = ctk.CTkLabel(
+            smooth_row,
+            text="Độ mượt",
+            text_color="#EFEFEF",
+            font=ctk.CTkFont(family="Bahnschrift", size=17, weight="normal"),
+        )
+        smooth_label.pack(side="left")
+        self.scalable_widgets.append((smooth_label, 17, "normal"))
+
+        self.wave_smooth_value = ctk.CTkLabel(
+            smooth_row,
+            text=f"{self.wave_smooth_var.get():.2f}",
+            text_color="#A5A8AD",
+            font=ctk.CTkFont(family="Bahnschrift", size=16, weight="normal"),
+        )
+        self.wave_smooth_value.pack(side="right")
+        self.scalable_widgets.append((self.wave_smooth_value, 16, "normal"))
+
+        self.wave_smooth_slider = ctk.CTkSlider(
+            tuning_panel,
+            from_=0.0,
+            to=1.0,
+            number_of_steps=20,
+            variable=self.wave_smooth_var,
+            progress_color="#96DD47",
+            fg_color="#ECECEC",
+            button_color="#7FC73A",
+            button_hover_color="#6BAD2F",
+            command=lambda _value: self._draw_waveform(),
+        )
+        self.wave_smooth_slider.pack(fill="x", padx=20, pady=(0, 8))
+        self.scalable_sliders.append(self.wave_smooth_slider)
+
         self.effect_param_container = ctk.CTkFrame(tuning_panel, fg_color="transparent")
-        self.effect_param_container.pack(fill="x", padx=12, pady=(2, 10))
-        self._render_effect_controls(self.effect_var.get())
+        self.effect_param_container.pack(fill="x", padx=14, pady=(2, 10))
 
     def _add_slider_row(self, parent, label_text, var, min_value, max_value, steps, suffix):
         row = ctk.CTkFrame(parent, fg_color="transparent")
-        row.pack(fill="x", padx=12, pady=4)
+        row.pack(fill="x", padx=20, pady=4)
 
         ctk.CTkLabel(
             row,
             text=label_text,
             width=110,
             anchor="w",
-            text_color="#222222",
-            font=ctk.CTkFont(family="Segoe UI", size=15, weight="bold"),
+            text_color="#F0F0F0",
+            font=ctk.CTkFont(family="Bahnschrift", size=17, weight="normal"),
         ).pack(side="left", padx=(0, 8))
         label_widget = row.winfo_children()[-1]
-        self.scalable_widgets.append((label_widget, 15, "bold"))
+        self.scalable_widgets.append((label_widget, 17, "normal"))
 
         value_label = ctk.CTkLabel(
             row,
             text=f"{var.get():.2f}{suffix}",
             width=86,
             anchor="e",
-            text_color="#1A1A1A",
-            font=ctk.CTkFont(family="Segoe UI", size=13, weight="normal"),
+            text_color="#9EA3AA",
+            font=ctk.CTkFont(family="Bahnschrift", size=16, weight="normal"),
         )
         value_label.pack(side="right")
-        self.scalable_widgets.append((value_label, 13, "normal"))
+        self.scalable_widgets.append((value_label, 16, "normal"))
 
         slider = ctk.CTkSlider(
             row,
@@ -457,14 +468,39 @@ class VoiceChangerApp:
             to=max_value,
             number_of_steps=steps,
             variable=var,
-            progress_color="#1E90FF",
-            button_color="#1677D9",
+            fg_color="#F2F2F2",
+            progress_color="#96DD47",
+            button_color="#80C63A",
+            button_hover_color="#6DAE30",
             command=lambda current: value_label.configure(text=f"{float(current):.2f}{suffix}"),
         )
         slider.pack(side="left", fill="x", expand=True, padx=(0, 8))
         self.scalable_sliders.append(slider)
 
+    def _set_effect(self, effect_name):
+        self.effect_var.set(effect_name)
+        self._on_effect_changed()
+
+    def _refresh_effect_buttons(self):
+        active_effect = self.effect_var.get()
+        for effect, btn in self.effect_buttons.items():
+            if effect == active_effect:
+                btn.configure(
+                    fg_color="#9EDF56",
+                    hover_color="#91CE4F",
+                    text_color="#182008",
+                    border_width=0,
+                )
+            else:
+                btn.configure(
+                    fg_color="#ECECEC",
+                    hover_color="#D5D5D5",
+                    text_color="#202020",
+                    border_width=0,
+                )
+
     def _on_effect_changed(self, *_):
+        self._refresh_effect_buttons()
         self._render_effect_controls(self.effect_var.get())
 
     def _render_effect_controls(self, effect_name):
@@ -477,10 +513,10 @@ class VoiceChangerApp:
             ctk.CTkLabel(
                 self.effect_param_container,
                 text="Hiệu ứng này không có thông số bổ sung",
-                text_color="#444444",
-                font=ctk.CTkFont(family="Segoe UI", size=13),
+                text_color="#B8BDC4",
+                font=ctk.CTkFont(family="Bahnschrift", size=14),
             ).pack(anchor="w", padx=6, pady=6)
-            self.scalable_widgets.append((self.effect_param_container.winfo_children()[-1], 13, "normal"))
+            self.scalable_widgets.append((self.effect_param_container.winfo_children()[-1], 14, "normal"))
             return
 
         for spec in specs:
@@ -538,28 +574,28 @@ class VoiceChangerApp:
     def _get_wave_palette(self):
         palettes = {
             "Aurora": {
-                "bg": "#020726",
-                "axis": "#122150",
-                "hint": "#7D8CC0",
-                "start": "#D13FFF",
-                "mid": "#6A39FF",
-                "end": "#57F3FF",
+                "bg": "#2A2D31",
+                "axis": "#41454A",
+                "hint": "#80858E",
+                "start": "#CFE45A",
+                "mid": "#0F8AE4",
+                "end": "#FF8E13",
             },
             "Neon": {
-                "bg": "#031914",
-                "axis": "#13392C",
-                "hint": "#78B8A1",
-                "start": "#7DFF68",
-                "mid": "#23E08A",
-                "end": "#45FFF0",
+                "bg": "#23272C",
+                "axis": "#3B4249",
+                "hint": "#7B8794",
+                "start": "#74FF4E",
+                "mid": "#0ED2AF",
+                "end": "#4CD9FF",
             },
             "Sunset": {
-                "bg": "#200B14",
-                "axis": "#4A1F2F",
-                "hint": "#C59AAB",
-                "start": "#FF5A8F",
-                "mid": "#FF7A59",
-                "end": "#FFD35D",
+                "bg": "#2B2420",
+                "axis": "#4E4139",
+                "hint": "#A79383",
+                "start": "#F2D55B",
+                "mid": "#DE8A3E",
+                "end": "#D2542E",
             },
         }
         return palettes.get(self.wave_palette_var.get(), palettes["Aurora"])
@@ -599,9 +635,12 @@ class VoiceChangerApp:
     def _reset_playback_progress(self):
         self.played_samples = 0
         self.total_playback_samples = 0
-        self.wave_progress.set(0)
-        self.lbl_time_current.configure(text="00:00.0")
-        self.lbl_time_total.configure(text="00:00.0")
+        if hasattr(self, "wave_progress"):
+            self.wave_progress.set(0)
+        if hasattr(self, "lbl_time_current"):
+            self.lbl_time_current.configure(text="00:00.0")
+        if hasattr(self, "lbl_time_total"):
+            self.lbl_time_total.configure(text="00:00.0")
 
     def _update_progress_ui(self):
         if self.sr <= 0:
@@ -611,9 +650,12 @@ class VoiceChangerApp:
         current_seconds = self.played_samples / self.sr
         progress = min(1.0, self.played_samples / self.total_playback_samples) if self.total_playback_samples else 0.0
 
-        self.wave_progress.set(progress)
-        self.lbl_time_current.configure(text=self._format_time(current_seconds))
-        self.lbl_time_total.configure(text=self._format_time(total_seconds))
+        if hasattr(self, "wave_progress"):
+            self.wave_progress.set(progress)
+        if hasattr(self, "lbl_time_current"):
+            self.lbl_time_current.configure(text=self._format_time(current_seconds))
+        if hasattr(self, "lbl_time_total"):
+            self.lbl_time_total.configure(text=self._format_time(total_seconds))
 
     def _draw_waveform(self, samples=None):
         if not hasattr(self, "wave_canvas"):
@@ -624,13 +666,16 @@ class VoiceChangerApp:
         mid = height / 2
         palette = self._get_wave_palette()
         smoothness = float(self.wave_smooth_var.get())
-        self.wave_smooth_value.configure(text=f"{smoothness:.2f}")
+        if hasattr(self, "wave_smooth_value"):
+            self.wave_smooth_value.configure(text=f"{smoothness:.2f}")
         self.wave_canvas.configure(bg=palette["bg"])
-        self.wave_progress.configure(progress_color=palette["end"], fg_color=self._mix_color(palette["bg"], "#FFFFFF", 0.12))
-        self.wave_smooth_slider.configure(
-            progress_color=palette["end"],
-            button_color=self._mix_color(palette["end"], "#FFFFFF", 0.25),
-        )
+        if hasattr(self, "wave_progress"):
+            self.wave_progress.configure(progress_color=palette["end"], fg_color=self._mix_color(palette["bg"], "#FFFFFF", 0.12))
+        if hasattr(self, "wave_smooth_slider"):
+            self.wave_smooth_slider.configure(
+                progress_color="#96DD47",
+                button_color="#80C63A",
+            )
 
         self.wave_canvas.delete("all")
         self.wave_canvas.create_line(0, mid, width, mid, fill=palette["axis"], width=1)
@@ -639,9 +684,9 @@ class VoiceChangerApp:
             self.wave_canvas.create_text(
                 width / 2,
                 mid,
-                text="Nhấn 'Áp dụng và nghe thử' để xem waveform realtime",
+                text="Nhấn 'Phát' để xem waveform realtime",
                 fill=palette["hint"],
-                font=("Segoe UI", 10),
+                font=("Bahnschrift", 11),
             )
             return
 
@@ -711,27 +756,52 @@ class VoiceChangerApp:
             self.waveform_after_id = None
 
     def _on_audio_finished(self):
+        if not self.is_playing_audio:
+            return
         self.root.after(0, self._finish_audio_ui)
 
     def _finish_audio_ui(self):
         self.is_playing_audio = False
         self.played_samples = self.total_playback_samples
         self._update_progress_ui()
-        self.btn_play.configure(text="Áp dụng và nghe thử", state="normal")
+        self.btn_play.configure(text="Phát", state="normal")
         self.btn_browse.configure(state="normal")
-        self._set_status("Đã phát xong bản xem thử", "#118A2C")
+        self._set_status("Đã phát xong bản xem thử", "#4F9F2F")
 
     def _set_recording_ui(self, recording):
         if recording:
-            self.btn_record.configure(text="Dừng", fg_color="#C81E1E", hover_color="#A81414")
+            self.btn_record.configure(text="Dừng", fg_color="#D24728", hover_color="#BC3A1D", border_color="#8D2C15")
             self.btn_browse.configure(state="disabled")
             self.btn_play.configure(state="disabled")
-            self._set_status("Đang ghi âm...", "#B9311B")
+            self._set_status("Đang ghi âm...", "#D16042")
             return
 
-        self.btn_record.configure(text="Ghi âm", fg_color="#FF2B35", hover_color="#DC2029")
+        self.btn_record.configure(text="Ghi âm", fg_color="#FF910C", hover_color="#E67F00", border_color="#BE5D00")
         self.btn_browse.configure(state="normal")
         self.btn_play.configure(state="normal")
+
+    def _stop_playback(self, user_initiated=False):
+        stop_audio()
+        self.is_playing_audio = False
+
+        while not self.waveform_queue.empty():
+            try:
+                self.waveform_queue.get_nowait()
+            except queue.Empty:
+                break
+
+        if self.waveform_after_id is not None:
+            try:
+                self.root.after_cancel(self.waveform_after_id)
+            except Exception:
+                pass
+            self.waveform_after_id = None
+
+        self.btn_play.configure(text="Phát", state="normal")
+        self.btn_browse.configure(state="normal")
+
+        if user_initiated:
+            self._set_status("Đã dừng phát", "#D9A82D")
 
     def _get_audio_filetypes(self):
         common_ext = "*.wav *.mp3 *.mp4 *.m4a *.aac *.flac *.ogg *.opus *.wma *.aiff *.aif *.au"
@@ -752,6 +822,9 @@ class VoiceChangerApp:
 
     # --- CÁC HÀM XỬ LÝ SỰ KIỆN ---
     def load_file(self):
+        if self.is_playing_audio:
+            self._stop_playback(user_initiated=False)
+
         filepath = filedialog.askopenfilename(filetypes=self._get_audio_filetypes())
         if filepath:
             filename = os.path.basename(filepath)
@@ -782,6 +855,9 @@ class VoiceChangerApp:
                 )
 
     def toggle_record(self):
+        if self.is_playing_audio:
+            self._stop_playback(user_initiated=False)
+
         if not self.is_recording:
             self.is_recording = True
             self._set_recording_ui(True)
@@ -812,6 +888,10 @@ class VoiceChangerApp:
             self.btn_save.configure(state="disabled")
 
     def process_and_play(self):
+        if self.is_playing_audio:
+            self._stop_playback(user_initiated=True)
+            return
+
         if self.y_original is None:
             messagebox.showwarning("Nhắc nhở", "Vui lòng Chọn file hoặc Thu âm trước!")
             return
@@ -832,7 +912,7 @@ class VoiceChangerApp:
                 gain_db=gain_db,
             )
 
-            self.btn_play.configure(text="Đang phát...")
+            self.btn_play.configure(text="Dừng", state="normal")
             self.root.update()
             self.is_playing_audio = True
             self.played_samples = 0
@@ -847,11 +927,11 @@ class VoiceChangerApp:
             )
 
             self.btn_save.configure(state="normal")
-            self._set_status("Đang phát bản đã áp dụng hiệu ứng", "#118A2C")
+            self._set_status("Đang phát bản đã áp dụng hiệu ứng", "#4F9F2F")
         except Exception as e:
             messagebox.showerror("Lỗi Xử lý", str(e))
             self._set_status("Không thể xử lý âm thanh", "#C73A3A")
-            self.btn_play.configure(text="Áp dụng và nghe thử", state="normal")
+            self.btn_play.configure(text="Phát", state="normal")
             self.btn_browse.configure(state="normal")
 
     def save_audio(self):
