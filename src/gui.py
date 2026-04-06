@@ -28,6 +28,7 @@ class VoiceChangerApp:
         self.gain_db_var = ctk.DoubleVar(value=0.0)
         self.effect_param_vars = {}
         self.effect_param_specs = self._create_effect_param_specs()
+        self.param_help_texts = self._create_param_help_texts()
         self.scalable_widgets = []
         self.scalable_sliders = []
         self.base_metrics = {}
@@ -39,6 +40,10 @@ class VoiceChangerApp:
         self.wave_palette_var = ctk.StringVar(value="Aurora")
         self.wave_smooth_var = ctk.DoubleVar(value=0.7)
         self.effect_buttons = {}
+        self._tooltip_window = None
+        self._tooltip_label = None
+        self._tooltip_after_id = None
+        self._tooltip_text = ""
         self.effect_options = [
             ("Sóc chuột", "soc_chuot"),
             ("Quái vật", "quai_vat"),
@@ -111,6 +116,84 @@ class VoiceChangerApp:
                 {"key": "drive", "label": "Drive", "min": 1.0, "max": 3.0, "default": 1.7, "steps": 80, "suffix": ""},
             ],
         }
+
+    def _create_param_help_texts(self):
+        return {
+            "n_steps": "Điều chỉnh cao độ giọng. Giá trị lớn làm giọng cao hơn, nhỏ làm trầm hơn.",
+            "delay_ms": "Thời gian trễ giữa âm gốc và âm lặp lại. Tăng để hiệu ứng vang rõ hơn.",
+            "mix": "Tỉ lệ hòa trộn giữa âm gốc và hiệu ứng. Cao hơn nghĩa là hiệu ứng rõ hơn.",
+            "rate": "Tốc độ phát lại âm thanh. Lớn hơn 1 là nhanh hơn, nhỏ hơn 1 là chậm hơn.",
+            "base_delay_ms": "Độ trễ cơ bản của reverb, quyết định độ rộng không gian giả lập.",
+            "wet": "Mức âm ướt (âm hiệu ứng) trong reverb. Tăng để âm vang nhiều hơn.",
+            "decay": "Độ tắt dần của đuôi vang. Tăng để đuôi vang kéo dài hơn.",
+            "threshold_mult": "Hệ số ngưỡng lọc nhiễu. Tăng để lọc mạnh hơn nhưng có thể mất chi tiết nhỏ.",
+            "floor": "Ngưỡng sàn tối thiểu để nhận diện nhiễu nền khi tín hiệu quá nhỏ.",
+            "attenuate": "Mức giảm biên độ phần tín hiệu bị xem là nhiễu. Cao hơn sẽ giảm mạnh hơn.",
+            "low_hz": "Tần số cắt thấp. Âm dưới ngưỡng này sẽ bị giảm.",
+            "high_hz": "Tần số cắt cao. Âm trên ngưỡng này sẽ bị giảm.",
+            "drive": "Mức bão hòa/méo nhẹ. Tăng để âm dày và gắt hơn.",
+            "noise": "Lượng nhiễu nền bổ sung để mô phỏng chất âm thiết bị cũ.",
+        }
+
+    def _show_tooltip(self):
+        if not self._tooltip_text:
+            return
+
+        if self._tooltip_window is None or not self._tooltip_window.winfo_exists():
+            self._tooltip_window = tk.Toplevel(self.root)
+            self._tooltip_window.overrideredirect(True)
+            self._tooltip_window.attributes("-topmost", True)
+            self._tooltip_window.configure(bg="#111318")
+            self._tooltip_label = ctk.CTkLabel(
+                self._tooltip_window,
+                text=self._tooltip_text,
+                text_color="#ECEFF3",
+                fg_color="#111318",
+                corner_radius=8,
+                justify="left",
+                anchor="w",
+                padx=10,
+                pady=6,
+                font=ctk.CTkFont(family="Bahnschrift", size=13, weight="normal"),
+            )
+            self._tooltip_label.pack(fill="both", expand=True)
+        else:
+            self._tooltip_label.configure(text=self._tooltip_text)
+
+        pointer_x = self.root.winfo_pointerx()
+        pointer_y = self.root.winfo_pointery()
+        self._tooltip_window.geometry(f"+{pointer_x + 14}+{pointer_y + 12}")
+        self._tooltip_window.deiconify()
+
+    def _hide_tooltip(self):
+        if self._tooltip_after_id is not None:
+            try:
+                self.root.after_cancel(self._tooltip_after_id)
+            except Exception:
+                pass
+            self._tooltip_after_id = None
+
+        if self._tooltip_window is not None and self._tooltip_window.winfo_exists():
+            self._tooltip_window.withdraw()
+
+    def _schedule_tooltip(self, text):
+        self._tooltip_text = text or ""
+        if not self._tooltip_text:
+            self._hide_tooltip()
+            return
+
+        if self._tooltip_after_id is not None:
+            try:
+                self.root.after_cancel(self._tooltip_after_id)
+            except Exception:
+                pass
+        self._tooltip_after_id = self.root.after(280, self._show_tooltip)
+
+    def _bind_tooltip(self, widget, text):
+        if widget is None or not text:
+            return
+        widget.bind("<Enter>", lambda _event, t=text: self._schedule_tooltip(t), add="+")
+        widget.bind("<Leave>", lambda _event: self._hide_tooltip(), add="+")
 
     def _build_layout(self):
         self.container = ctk.CTkFrame(self.root, fg_color="transparent")
@@ -436,20 +519,20 @@ class VoiceChangerApp:
         self.effect_param_container = ctk.CTkFrame(tuning_panel, fg_color="transparent")
         self.effect_param_container.pack(fill="x", padx=14, pady=(2, 10))
 
-    def _add_slider_row(self, parent, label_text, var, min_value, max_value, steps, suffix):
+    def _add_slider_row(self, parent, label_text, var, min_value, max_value, steps, suffix, tooltip_text=""):
         row = ctk.CTkFrame(parent, fg_color="transparent")
         row.pack(fill="x", padx=20, pady=4)
 
-        ctk.CTkLabel(
+        param_label = ctk.CTkLabel(
             row,
             text=label_text,
             width=110,
             anchor="w",
             text_color="#F0F0F0",
             font=ctk.CTkFont(family="Bahnschrift", size=17, weight="normal"),
-        ).pack(side="left", padx=(0, 8))
-        label_widget = row.winfo_children()[-1]
-        self.scalable_widgets.append((label_widget, 17, "normal"))
+        )
+        param_label.pack(side="left", padx=(0, 8))
+        self.scalable_widgets.append((param_label, 17, "normal"))
 
         value_label = ctk.CTkLabel(
             row,
@@ -476,6 +559,10 @@ class VoiceChangerApp:
         )
         slider.pack(side="left", fill="x", expand=True, padx=(0, 8))
         self.scalable_sliders.append(slider)
+
+        self._bind_tooltip(param_label, tooltip_text)
+        self._bind_tooltip(value_label, tooltip_text)
+        self._bind_tooltip(slider, tooltip_text)
 
     def _set_effect(self, effect_name):
         self.effect_var.set(effect_name)
@@ -523,6 +610,7 @@ class VoiceChangerApp:
             key = spec["key"]
             var = ctk.DoubleVar(value=spec["default"])
             self.effect_param_vars[key] = var
+            tooltip_text = self.param_help_texts.get(key, "")
             self._add_slider_row(
                 self.effect_param_container,
                 label_text=spec["label"],
@@ -531,6 +619,7 @@ class VoiceChangerApp:
                 max_value=spec["max"],
                 steps=spec["steps"],
                 suffix=spec["suffix"],
+                tooltip_text=tooltip_text,
             )
 
     def _on_window_resize(self, event):
